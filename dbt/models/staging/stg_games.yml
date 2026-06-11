@@ -1,0 +1,30 @@
+version: 2
+
+models:
+  - name: stg_games
+    description: "Parties Chess.com nettoyées et enrichies"
+    columns:
+
+      - name: uuid
+        description: "Identifiant unique de la partie"
+        data_tests:
+          - unique
+          - not_null
+
+      - name: mon_resultat
+        description: "Résultat de la partie"
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ['victoire', 'defaite', 'nulle']
+
+      - name: ma_couleur
+        description: "Couleur jouée"
+        data_tests:
+          - accepted_values:
+              values: ['white', 'black']
+
+      - name: mon_rating
+        description: "Elo au moment de la partie"
+        data_tests:
+          - not_null
