@@ -56,6 +56,25 @@ services:
     command: >
       bash -c "airflow db init && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@chesspulse.com"
     restart: on-failure
+  
+  # Dashboard Metabase
+  metabase:
+    image: metabase/metabase:latest
+    container_name: chesspulse_metabase
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: chesspulse
+      MB_DB_PORT: 5432
+      MB_DB_USER: chesspulse
+      MB_DB_PASS: chesspulse
+      MB_DB_HOST: postgres
+    depends_on:
+      - postgres
+    networks:
+      - chesspulse_network
+    restart: unless-stopped
 
 volumes:
   postgres_data:
