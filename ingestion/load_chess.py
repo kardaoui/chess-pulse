@@ -1,19 +1,37 @@
 import requests
-import json
-from datetime import datetime
+from datetime import datetime, date
+from dotenv import load_dotenv
+import os
 
-USERNAME = "midounesk"
+load_dotenv()
+
+USERNAME = os.getenv("CHESS_USERNAME")
 
 HEADERS = {
     "User-Agent": "ChessPulse/1.0 portfolio-project"
 }
 
 
-def get_archives(username):
-    """Récupère la liste de tous les mois disponibles."""
+def get_archives_manquantes(username, depuis_date):
+    """
+    Récupère uniquement les mois entre la dernière partie
+    en base et aujourd'hui.
+    """
     url = f"https://api.chess.com/pub/player/{username}/games/archives"
     response = requests.get(url, headers=HEADERS)
-    return response.json()["archives"]
+    toutes_archives = response.json()["archives"]
+
+    if depuis_date is None:
+        return toutes_archives
+
+    archives_manquantes = []
+    for archive_url in toutes_archives:
+        annee = int(archive_url.split("/")[-2])
+        mois  = int(archive_url.split("/")[-1])
+        if date(annee, mois, 1) >= date(depuis_date.year, depuis_date.month, 1):
+            archives_manquantes.append(archive_url)
+
+    return archives_manquantes
 
 
 def get_games_by_month(archive_url):
@@ -25,14 +43,7 @@ def get_games_by_month(archive_url):
 def extraire_infos(partie, mon_username):
     """
     Transforme une partie brute de l'API en dictionnaire propre.
-    C'est ici qu'on fait le travail de la couche STAGING :
-    - on aplatit les objets imbriqués (white, black)
-    - on convertit le timestamp en date lisible
-    - on extrait le nom de l'ouverture depuis l'URL eco
-    - on détermine si j'ai gagné, perdu ou fait nulle
     """
-
-    # Identifier ma couleur dans cette partie
     if partie["white"]["username"].lower() == mon_username.lower():
         ma_couleur = "white"
         couleur_adverse = "black"
@@ -42,7 +53,6 @@ def extraire_infos(partie, mon_username):
 
     mon_resultat_brut = partie[ma_couleur]["result"]
 
-    # Normaliser le résultat en 3 catégories simples
     if mon_resultat_brut == "win":
         mon_resultat = "victoire"
     elif mon_resultat_brut in ["agreed", "stalemate", "repetition", "insufficient", "50move"]:
@@ -50,12 +60,8 @@ def extraire_infos(partie, mon_username):
     else:
         mon_resultat = "defaite"
 
-    # Convertir le timestamp Unix en date lisible
-    # Unix timestamp = nombre de secondes depuis le 1er janvier 1970
     date_partie = datetime.fromtimestamp(partie["end_time"])
 
-    # Extraire le nom de l'ouverture depuis l'URL
-    # Ex: ".../Italian-Game-Two-Knights" → "Italian-Game-Two-Knights"
     ouverture = None
     if "eco" in partie:
         ouverture = partie["eco"].split("/")[-1]
@@ -82,42 +88,61 @@ def extraire_infos(partie, mon_username):
     }
 
 
-if __name__ == "__main__":
+def get_nouvelles_parties(depuis_date=None):
+    """
+    Fonction principale — récupère toutes les nouvelles parties.
+    Retourne une liste de parties prêtes à être insérées.
+    """
+    archives_utiles = get_archives_manquantes(USERNAME, depuis_date)
 
-    # Récupérer toutes les parties de tous les mois
-    print("⏳ Récupération de toutes tes parties...")
-    archives = get_archives(USERNAME)
-    toutes_les_parties = []
-
-    for archive_url in archives:
+    toutes_parties = []
+    for archive_url in archives_utiles:
         mois = archive_url.split("/")[-2] + "/" + archive_url.split("/")[-1]
         parties_du_mois = get_games_by_month(archive_url)
         parties_extraites = [extraire_infos(p, USERNAME) for p in parties_du_mois]
-        toutes_les_parties.extend(parties_extraites)
-        print(f"  ✅ {mois} : {len(parties_du_mois)} parties récupérées")
+        toutes_parties.extend(parties_extraites)
+        print(f"  📥 {mois} : {len(parties_du_mois)} parties récupérées")
 
-    print(f"\n🎯 TOTAL : {len(toutes_les_parties)} parties sur {len(archives)} mois")
+    return toutes_parties
 
-    # Statistiques globales
-    victoires = sum(1 for p in toutes_les_parties if p["mon_resultat"] == "victoire")
-    defaites  = sum(1 for p in toutes_les_parties if p["mon_resultat"] == "defaite")
-    nulles    = sum(1 for p in toutes_les_parties if p["mon_resultat"] == "nulle")
-    winrate   = round(victoires / len(toutes_les_parties) * 100, 1)
 
-    print(f"\n📊 STATISTIQUES GLOBALES")
-    print(f"  ✅ Victoires : {victoires}")
-    print(f"  ❌ Défaites  : {defaites}")
-    print(f"  ➖ Nulles    : {nulles}")
-    print(f"  🎯 Winrate   : {winrate}%")
+if __name__ == "__main__":
+    """
+    Mode test — permet de tester l'API sans toucher à PostgreSQL.
+    Lance : python load_chess.py
+    """
+    from datetime import date
 
-    # Afficher un exemple de partie transformée
-    print(f"\n🔍 EXEMPLE — partie transformée prête pour la base de données :")
-    exemple = toutes_les_parties[0]
+    print("=" * 50)
+    print("🧪 TEST API CHESS.COM")
+    print("=" * 50)
+
+    # Test 1 : vérifier que l'API répond
+    print(f"\n👤 Username : {USERNAME}")
+    url = f"https://api.chess.com/pub/player/{USERNAME}/games/archives"
+    response = requests.get(url, headers=HEADERS)
+    archives = response.json()["archives"]
+    print(f"📅 Mois disponibles : {len(archives)}")
+    print(f"   → Premier : {archives[0].split('/')[-2]}/{archives[0].split('/')[-1]}")
+    print(f"   → Dernier : {archives[-1].split('/')[-2]}/{archives[-1].split('/')[-1]}")
+
+    # Test 2 : récupérer le mois le plus récent
+    print(f"\n⏳ Récupération du mois le plus récent...")
+    parties = get_games_by_month(archives[-1])
+    print(f"♟️  Parties ce mois : {len(parties)}")
+
+    # Test 3 : transformer une partie
+    exemple = extraire_infos(parties[0], USERNAME)
+    print(f"\n🔍 Exemple de partie transformée :")
     for cle, valeur in exemple.items():
-        if cle != "pgn":  # Le PGN est trop long
+        if cle != "pgn":
             print(f"  {cle:20s} : {valeur}")
 
-    # Sauvegarder en JSON pour l'étape suivante
-    with open("ingestion/parties_raw.json", "w", encoding="utf-8") as f:
-        json.dump(toutes_les_parties, f, ensure_ascii=False, indent=2, default=str)
-    print(f"\n💾 Données sauvegardées dans ingestion/parties_raw.json")
+    # Test 4 : simuler une récupération incrémentale
+    print(f"\n📦 Test récupération incrémentale :")
+    print(f"  Simulation — dernière partie en base : 2026-03-01")
+    depuis = date(2026, 3, 1)
+    archives_utiles = get_archives_manquantes(USERNAME, depuis)
+    print(f"  Mois à traiter : {len(archives_utiles)}/{len(archives)}")
+    for a in archives_utiles:
+        print(f"    → {a.split('/')[-2]}/{a.split('/')[-1]}")
