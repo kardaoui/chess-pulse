@@ -1,0 +1,4 @@
+requests
+python-chess
+psycopg2-binary
+python-dotenv
