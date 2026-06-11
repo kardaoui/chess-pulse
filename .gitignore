@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Données brutes — ne pas versionner
+ingestion/parties_raw.json
