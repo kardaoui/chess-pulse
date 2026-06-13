@@ -45,7 +45,26 @@ with DAG(
     )
 
     # ─────────────────────────────────────────
-    # Tâche 2 — dbt run (transformations)
+    # Tâche 2 — Quality checks (Great Expectations)
+    # ─────────────────────────────────────────
+    def task_quality_checks():
+        """
+        Vérifie la qualité des données dans raw.games
+        avant de lancer les transformations dbt.
+        """
+        from quality_checks import run_quality_checks
+        success = run_quality_checks()
+        if not success:
+            raise ValueError("❌ Les vérifications de qualité ont échoué")
+        print("✅ Toutes les vérifications de qualité sont passées")
+
+    quality_checks = PythonOperator(
+        task_id         = 'quality_checks',
+        python_callable = task_quality_checks,
+    )
+
+    # ─────────────────────────────────────────
+    # Tâche 3 — dbt run (transformations)
     # ─────────────────────────────────────────
     dbt_run = BashOperator(
         task_id         = 'dbt_run',
@@ -53,7 +72,7 @@ with DAG(
     )
 
     # ─────────────────────────────────────────
-    # Tâche 3 — dbt test (qualité des données)
+    # Tâche 4 — dbt test (qualité des données)
     # ─────────────────────────────────────────
     dbt_test = BashOperator(
         task_id         = 'dbt_test',
@@ -63,4 +82,4 @@ with DAG(
     # ─────────────────────────────────────────
     # Ordre d'exécution des tâches
     # ─────────────────────────────────────────
-    ingestion >> dbt_run >> dbt_test
+    ingestion >> quality_checks >> dbt_run >> dbt_test
