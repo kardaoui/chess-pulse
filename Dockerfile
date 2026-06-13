@@ -12,4 +12,6 @@ RUN pip install --no-cache-dir \
     psycopg2-binary \
     python-dotenv \
     requests \
-    python-chess
+    python-chess \
+    great-expectations==0.18.0 \
+    pandas
