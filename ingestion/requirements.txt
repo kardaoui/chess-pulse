@@ -2,3 +2,5 @@ requests
 python-chess
 psycopg2-binary
 python-dotenv
+great-expectations==0.18.0
+pandas
