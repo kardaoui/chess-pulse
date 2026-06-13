@@ -219,3 +219,6 @@ __marimo__/
 
 # Données brutes — ne pas versionner
 ingestion/parties_raw.json
+
+# Great Expectations — contexte local généré automatiquement
+gx/

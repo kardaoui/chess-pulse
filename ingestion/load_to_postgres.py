@@ -1,24 +1,10 @@
-import psycopg2
-from dotenv import load_dotenv
 import os
 import sys
 
 # Ajouter le dossier ingestion au path pour importer load_chess
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from load_chess import get_nouvelles_parties
-
-load_dotenv()
-
-
-def get_connexion():
-    """Retourne une connexion PostgreSQL."""
-    return psycopg2.connect(
-        host     = os.getenv("POSTGRES_HOST"),
-        port     = os.getenv("POSTGRES_PORT"),
-        dbname   = os.getenv("POSTGRES_DB"),
-        user     = os.getenv("POSTGRES_USER"),
-        password = os.getenv("POSTGRES_PASSWORD")
-    )
+from db_utils import get_connexion
 
 
 def get_derniere_date(cursor):
