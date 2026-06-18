@@ -4,7 +4,7 @@ import sys
 # Ajouter le dossier ingestion au path pour importer load_chess
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from load_chess import get_nouvelles_parties
-from db_utils import get_connexion
+from db_utils import get_connexion, creer_tables_si_absentes
 
 
 def get_derniere_date(cursor):
@@ -87,6 +87,8 @@ def run_pipeline(depuis_date=None):
     Fonction principale du pipeline.
     Peut être appelée depuis Airflow ou en ligne de commande.
     """
+    creer_tables_si_absentes()
+    
     conn   = get_connexion()
     cursor = conn.cursor()
 
