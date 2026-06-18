@@ -9,7 +9,8 @@ test-paths: ["tests"]
 analysis-paths: ["analyses"]
 snapshot-paths: ["snapshots"]
 
-target-path: "target"
+target-path: "/tmp/dbt/target"
+log-path: "/tmp/dbt/logs"
 clean-targets:
   - "target"
   - "dbt_packages"
