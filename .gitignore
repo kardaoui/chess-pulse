@@ -223,3 +223,10 @@ ingestion/parties_raw.json
 
 # Great Expectations — contexte local généré automatiquement
 gx/
+
+# Audit 2026-08-14
+# Le contexte Great Expectations a ete renomme (gx/ -> great_expectations/) :
+# l'ancienne regle ne protegeait plus rien.
+great_expectations/
+dbt/.user.yml
+.env.bak*

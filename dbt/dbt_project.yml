@@ -9,8 +9,10 @@ test-paths: ["tests"]
 analysis-paths: ["analyses"]
 snapshot-paths: ["snapshots"]
 
-target-path: "/tmp/dbt/target"
-log-path: "/tmp/dbt/logs"
+# target-path et log-path sont dépréciés dans dbt_project.yml et déclenchaient
+# un avertissement à chaque exécution. Les artefacts sont écrits hors du volume
+# monté — pour éviter un conflit d'UID entre l'hôte et le conteneur — via les
+# variables DBT_TARGET_PATH et DBT_LOG_PATH, définies dans docker-compose.yml.
 clean-targets:
   - "target"
   - "dbt_packages"

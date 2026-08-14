@@ -2,18 +2,38 @@ x-airflow-common: &airflow-common
   build: .
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://chesspulse:chesspulse@postgres/airflow_meta
-    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/airflow_meta
+    # Clé de chiffrement des connexions et variables Airflow.
+    # Vide = stockage en clair dans la base de métadonnées.
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+    # false : l'UI exposait sinon la configuration complète,
+    # dont la chaîne de connexion PostgreSQL avec son mot de passe.
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
+    # basic_auth : authentification de l'API REST, utilisée par POST /sync.
+    # session : requis par l'UI — Airflow l'ajoute d'office s'il est absent,
+    # en émettant un avertissement. On le déclare donc explicitement.
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     PYTHONPATH: /opt/airflow
+    # Artefacts dbt hors du volume monté (conflit d'UID hôte/conteneur).
+    # Via variables d'environnement plutôt que dbt_project.yml, où les clés
+    # target-path et log-path sont dépréciées.
+    DBT_TARGET_PATH: /tmp/dbt/target
+    DBT_LOG_PATH: /tmp/dbt/logs
+  env_file:
+    # Fournit POSTGRES_* au conteneur, ce qui permet à dbt de résoudre
+    # env_var() dans profiles.yml sans mot de passe en dur.
+    - .env.docker
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./ingestion:/opt/airflow/ingestion
     - ./.env.docker:/opt/airflow/.env
     - airflow_logs:/opt/airflow/logs
     - ./dbt:/opt/airflow/dbt
+    # Contexte Great Expectations, sans quoi quality_checks.py se comporte
+    # différemment dans le DAG et en local.
+    - ./great_expectations:/opt/airflow/great_expectations
   depends_on:
     - postgres
   networks:
@@ -25,13 +45,21 @@ services:
     image: postgres:15
     container_name: chesspulse_postgres
     environment:
-      POSTGRES_USER: chesspulse
-      POSTGRES_PASSWORD: ***RETIRE-DE-L-HISTORIQUE***
-      POSTGRES_DB: chesspulse
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      # Adresse d'écoute paramétrable. Par défaut 0.0.0.0, car sous WSL2 en
+      # mode NAT la VM n'est pas joignable depuis le réseau local — et lier
+      # sur 127.0.0.1 casse la redirection localhost depuis Windows.
+      # Sur un hôte Linux natif ou en networkingMode=mirrored, définir
+      # BIND_HOST=127.0.0.1 dans .env.
+      - "${BIND_HOST:-0.0.0.0}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Crée airflow_meta au premier démarrage. Sans ce script, un clone
+      # neuf échoue : Airflow pointe sur une base qui n'existe pas.
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     networks:
       - chesspulse_network
     restart: unless-stopped
@@ -41,7 +69,7 @@ services:
     container_name: chesspulse_airflow_web
     command: webserver
     ports:
-      - "8080:8080"
+      - "${BIND_HOST:-0.0.0.0}:8080:8080"
     restart: unless-stopped
 
   airflow-scheduler:
@@ -54,7 +82,12 @@ services:
     <<: *airflow-common
     container_name: chesspulse_airflow_init
     command: >
-      bash -c "airflow db init && airflow users create --username admin --password ***RETIRE-DE-L-HISTORIQUE*** --firstname Admin --lastname User --role Admin --email admin@chesspulse.com"
+      bash -c "airflow db init &&
+               airflow users create
+                 --username ${AIRFLOW_ADMIN_USER}
+                 --password ${AIRFLOW_ADMIN_PASSWORD}
+                 --firstname Admin --lastname User
+                 --role Admin --email admin@chesspulse.com || true"
     restart: on-failure
 
   pipeline-api:
@@ -63,7 +96,15 @@ services:
       dockerfile: Dockerfile
     container_name: chesspulse_pipeline_api
     ports:
-      - "8000:8000"
+      - "${BIND_HOST:-0.0.0.0}:8000:8000"
+    environment:
+      # POST /sync déclenche le DAG via l'API REST d'Airflow.
+      # L'implémentation précédente lançait `docker exec`, ce qui aurait
+      # exigé de monter le socket Docker — soit un accès root à l'hôte
+      # depuis un service HTTP sans authentification.
+      AIRFLOW_API_URL: http://airflow-webserver:8080/api/v1
+      AIRFLOW_ADMIN_USER: ${AIRFLOW_ADMIN_USER}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
     env_file:
       - .env.docker
     depends_on:
