@@ -7,24 +7,35 @@ models:
 
       - name: uuid
         description: "Identifiant unique de la partie"
-        data_tests:
+        tests:
           - unique
           - not_null
 
+      - name: compte
+        description: "Compte Chess.com d'origine, en minuscules. L'Elo n'est comparable qu'à compte et format constants."
+        tests:
+          - not_null
+
+      - name: format
+        description: "Format de la partie. stg_games est restreint au rapid."
+        tests:
+          - accepted_values:
+              values: ['rapid']
+
       - name: mon_resultat
         description: "Résultat de la partie"
-        data_tests:
+        tests:
           - not_null
           - accepted_values:
               values: ['victoire', 'defaite', 'nulle']
 
       - name: ma_couleur
         description: "Couleur jouée"
-        data_tests:
+        tests:
           - accepted_values:
               values: ['white', 'black']
 
       - name: mon_rating
         description: "Elo au moment de la partie"
-        data_tests:
+        tests:
           - not_null

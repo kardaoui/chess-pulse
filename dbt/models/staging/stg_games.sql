@@ -5,6 +5,20 @@
 WITH source AS (
     -- On lit depuis la table raw qu'on a chargée avec Python
     SELECT * FROM raw.games
+
+    -- Périmètre d'analyse. Deux filtres, pour deux raisons distinctes :
+    --
+    -- 1. format = 'rapid' — Chess.com tient un classement séparé par format,
+    --    donc mon_rating n'est comparable qu'à format constant. Surtout, une
+    --    partie 'daily' se termine parfois des semaines après son premier
+    --    coup : comme `date` et `heure` dérivent de son end_time, moment_journee
+    --    y est un pur artefact.
+    --
+    -- 2. exclu_analyse — parties écartées manuellement du périmètre
+    --    (voir ingestion/exclure_parties.py). Elles restent dans raw.games,
+    --    mais ne remontent jamais aux marts ni aux modèles ML.
+    WHERE format = 'rapid'
+      AND exclu_analyse = FALSE
 ),
 
 enriched AS (
@@ -12,6 +26,7 @@ enriched AS (
         -- Identifiants
         uuid,
         url,
+        compte,
 
         -- Temporel
         date,
