@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from db import get_connexion
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/")
@@ -31,8 +33,11 @@ def get_stats_globales():
             "defaites":      row[2],
             "nulles":        row[3]
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Message générique : str(e) renvoyait l'exception PostgreSQL brute
+        # au client (noms de schémas, structure interne).
+        logger.exception("Erreur lors de la requête")
+        raise HTTPException(status_code=500, detail="Erreur interne")
     finally:
         cursor.close()
         conn.close()
@@ -74,8 +79,11 @@ def get_elo_mensuel():
             }
             for row in rows
         ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Message générique : str(e) renvoyait l'exception PostgreSQL brute
+        # au client (noms de schémas, structure interne).
+        logger.exception("Erreur lors de la requête")
+        raise HTTPException(status_code=500, detail="Erreur interne")
     finally:
         cursor.close()
         conn.close()
@@ -108,8 +116,11 @@ def get_winrate_ouvertures():
             }
             for row in rows
         ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Message générique : str(e) renvoyait l'exception PostgreSQL brute
+        # au client (noms de schémas, structure interne).
+        logger.exception("Erreur lors de la requête")
+        raise HTTPException(status_code=500, detail="Erreur interne")
     finally:
         cursor.close()
         conn.close()
@@ -151,8 +162,11 @@ def get_winrate_moments():
             }
             for row in rows
         ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # Message générique : str(e) renvoyait l'exception PostgreSQL brute
+        # au client (noms de schémas, structure interne).
+        logger.exception("Erreur lors de la requête")
+        raise HTTPException(status_code=500, detail="Erreur interne")
     finally:
         cursor.close()
         conn.close()
