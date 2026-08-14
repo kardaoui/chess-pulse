@@ -69,6 +69,10 @@ def extraire_infos(partie, mon_username):
     return {
         "uuid"              : partie["uuid"],
         "url"               : partie["url"],
+        # Compte interrogé, normalisé en minuscules. Sert de clé stable au
+        # curseur incrémental — contrairement à `mon_username`, qui reprend
+        # la casse renvoyée par Chess.com et peut donc varier.
+        "compte"            : mon_username.lower(),
         "date"              : date_partie.strftime("%Y-%m-%d"),
         "heure"             : date_partie.strftime("%H:%M"),
         "heure_int"         : date_partie.hour,

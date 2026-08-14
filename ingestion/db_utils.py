@@ -50,8 +50,24 @@ def creer_tables_si_absentes():
             ouverture           TEXT,
             fen_final           TEXT,
             pgn                 TEXT,
-            inserted_at         TIMESTAMP DEFAULT NOW()
+            inserted_at         TIMESTAMP DEFAULT NOW(),
+
+            -- Compte interrogé, en minuscules. Distinct de mon_username,
+            -- qui reprend la casse renvoyée par Chess.com.
+            compte              TEXT,
+
+            -- Marquage d'exclusion — on ne supprime jamais une partie :
+            -- une suppression ferait reculer MAX(date) et la prochaine
+            -- ingestion re-téléchargerait les lignes effacées.
+            exclu_analyse       BOOLEAN NOT NULL DEFAULT FALSE,
+            motif_exclusion     TEXT
         );
+    """)
+
+    # Index du curseur incrémental, qui filtre sur (compte, format)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_games_compte_format_date
+        ON raw.games (compte, format, date);
     """)
 
     conn.commit()

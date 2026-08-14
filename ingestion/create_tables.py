@@ -27,6 +27,7 @@ cursor.execute("""
         -- Identifiants
         uuid            TEXT PRIMARY KEY,  -- identifiant unique de la partie
         url             TEXT,              -- lien vers la partie sur Chess.com
+        compte          TEXT,              -- compte interrogé, en minuscules
 
         -- Informations temporelles
         date            DATE,              -- date de la partie (2026-06-01)
@@ -40,7 +41,7 @@ cursor.execute("""
 
         -- Informations sur toi
         ma_couleur          TEXT,          -- white ou black
-        mon_username        TEXT,          -- toujours midounesk
+        mon_username        TEXT,          -- username tel que renvoyé par l'API
         mon_rating          INTEGER,       -- ton Elo au moment de la partie
         mon_resultat_brut   TEXT,          -- win, resigned, checkmated...
         mon_resultat        TEXT,          -- victoire, defaite, nulle
@@ -55,8 +56,20 @@ cursor.execute("""
         pgn             TEXT,              -- tous les coups de la partie
 
         -- Métadonnées
-        inserted_at     TIMESTAMP DEFAULT NOW()  -- date d'insertion en base
+        inserted_at     TIMESTAMP DEFAULT NOW(),  -- date d'insertion en base
+
+        -- Marquage d'exclusion — on ne supprime jamais une partie :
+        -- une suppression ferait reculer MAX(date) et la prochaine
+        -- ingestion re-téléchargerait les lignes effacées.
+        exclu_analyse   BOOLEAN NOT NULL DEFAULT FALSE,
+        motif_exclusion TEXT
     );
+""")
+
+# Index du curseur incrémental, qui filtre sur (compte, format)
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_games_compte_format_date
+    ON raw.games (compte, format, date);
 """)
 
 # Valider les changements
