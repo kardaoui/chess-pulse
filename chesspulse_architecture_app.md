@@ -4,7 +4,19 @@
 
 Une application desktop **tout-en-un** qui centralise toutes les fonctionnalités ChessPulse dans une interface moderne et colorée. L'objectif est d'avoir un **cockpit personnel** pour piloter ses données d'échecs, analyser ses parties et exploiter les modèles ML — sans jongler entre plusieurs outils.
 
-> Metabase reste disponible pour les démonstrations portfolio, mais l'app desktop est l'outil du quotidien.
+> Metabase est retiré du projet : déjà utilisé sur un autre projet de l'auteur, il n'apporte pas de valeur portfolio supplémentaire ici.
+
+---
+
+## 🔄 Décision technologique : NiceGUI plutôt que React + Electron
+
+**Contexte de la décision.** L'app devait combiner deux besoins perçus comme contradictoires : explorer librement les données (comprendre le jeu) et s'exercer avec un échiquier fluide (pratique, coach). Cela a mené à envisager deux outils différents (Streamlit + React), puis jusqu'à trois projets séparés. Après évaluation, le vrai critère a été identifié : une seule interface cohérente, capable de couvrir l'exploration de données **et** un échiquier interactif fluide.
+
+**Pourquoi pas Streamlit.** Réexécute tout le script à chaque interaction — excellent pour des dashboards simples, inadapté à une interface réactive comme un échiquier coup par coup avec annotations du coach.
+
+**Pourquoi pas React + Electron.** Aurait rempli les deux besoins, mais imposait une deuxième techno (JS) entièrement déléguée à Claude Code, sans valeur d'apprentissage pour l'objectif MLOps/Data Engineer visé, et créait une vraie frontière frontend/backend à maintenir (deux langages, un contrat API interne, deux bases de code).
+
+**Pourquoi NiceGUI.** Construit directement sur FastAPI/Starlette/Uvicorn côté serveur, avec un rendu réactif par WebSocket (pas de réexécution du script à chaque clic, contrairement à Streamlit). Couvre l'exploration de données (composants `ui.plotly`, intégration Pandas/Matplotlib) **et** une interface fluide pour l'échiquier, en restant intégralement en Python. Peut tourner en fenêtre desktop native (remplace le rôle d'Electron) ou en navigateur. Seul point de vigilance assumé : l'échiquier interactif n'est pas un composant natif et nécessite l'intégration d'une librairie JS d'échiquier (ex. chessboard.js) via le mécanisme d'extension de NiceGUI — c'est le seul endroit du projet où l'on sort du pur Python, et c'est délibéré.
 
 ---
 
@@ -44,139 +56,91 @@ Exploitation des modèles d'intelligence artificielle.
 
 | Couche | Technologie | Rôle |
 |--------|-------------|------|
-| Frontend | React + Electron | Interface desktop moderne |
-| Backend | FastAPI (Python) | API REST + logique métier |
-| Base de données | PostgreSQL | Stockage des parties et features |
+| Interface | NiceGUI | UI réactive, exploration + échiquier + ML, en pur Python |
+| Backend / logique | FastAPI (sous-jacent à NiceGUI) + Python | Logique métier, ML, Stockfish |
+| Base de données | PostgreSQL (dans `chess-pulse`) | Stockage des parties et features |
+| Accès aux données | Pipeline API (`chess-pulse`) | `chess-pulse-app` ne touche jamais PostgreSQL directement |
 | ML | scikit-learn + MLflow | Modèles + tracking |
 | Analyse | Stockfish + python-chess | Analyse des coups |
-| Communication | REST API + WebSocket | Frontend ↔ Backend |
+| Échiquier | Librairie JS (ex. chessboard.js) intégrée via NiceGUI | Seul composant non-Python du projet |
+| Packaging desktop | NiceGUI natif (`ui.run(native=True)`) | Remplace Electron |
 
-**Choix frontend** : React géré par Claude Code (pas l'axe d'apprentissage prioritaire), Python géré manuellement (cœur du projet).
+**Choix techno** : tout le projet `chess-pulse-app` reste en Python, y compris l'interface — cohérent avec l'objectif d'apprentissage MLOps/Data Engineer et avec la Pipeline API déjà en FastAPI.
 
 ---
 
 ## 🏛️ Architecture — Feature-based
 
-Chaque fonctionnalité est **isolée dans son propre module**. Ajouter une nouvelle zone ne nécessite pas de modifier l'existant.
+Chaque fonctionnalité est **isolée dans son propre module**. Ajouter une nouvelle zone ne nécessite pas de modifier l'existant. Avec NiceGUI, il n'y a plus de séparation frontend/backend en deux langages : chaque feature regroupe sa logique (`service.py`) et sa page d'interface (`page.py`) dans le même dossier, dans la même techno.
 
 ```
-chesspulse-app/
-├── backend/                        ← FastAPI Python
-│   ├── main.py                     ← point d'entrée FastAPI
-│   ├── features/                   ← une feature = un dossier isolé
-│   │   ├── pipeline/               ← Zone 1 : sync Chess.com
-│   │   │   ├── router.py           ← endpoints API
-│   │   │   └── service.py          ← logique métier
-│   │   ├── dashboard/              ← Zone 2 : KPIs
-│   │   │   ├── router.py
-│   │   │   └── service.py
-│   │   ├── board/                  ← Zone 3 : échiquier + analyse
-│   │   │   ├── router.py
-│   │   │   └── service.py
-│   │   └── ml/                     ← Zone 4 : modèles ML
-│   │       ├── router.py
-│   │       └── service.py
-│   └── core/                       ← partagé par toutes les features
-│       ├── database.py             ← connexion PostgreSQL
-│       ├── config.py               ← variables d'environnement
-│       └── stockfish.py            ← connexion Stockfish
-│
-└── frontend/                       ← React + Electron
-    ├── src/
-    │   ├── App.jsx                 ← point d'entrée React
-    │   ├── features/               ← miroir de la structure backend
-    │   │   ├── pipeline/
-    │   │   ├── dashboard/
-    │   │   ├── board/
-    │   │   └── ml/
-    │   └── shared/                 ← composants réutilisables
-    │       ├── components/         ← boutons, cards, graphiques...
-    │       └── hooks/              ← logique React partagée
-    └── electron/                   ← configuration app desktop
+chess-pulse-app/
+├── main.py                         ← point d'entrée NiceGUI/FastAPI
+├── features/                       ← une feature = un dossier isolé
+│   ├── pipeline/                   ← Zone 1 : sync Chess.com
+│   │   ├── service.py              ← logique métier (appelle la Pipeline API)
+│   │   └── page.py                 ← interface NiceGUI (bouton, progression)
+│   ├── dashboard/                  ← Zone 2 : KPIs et exploration
+│   │   ├── service.py
+│   │   └── page.py                 ← graphiques ui.plotly
+│   ├── board/                      ← Zone 3 : échiquier + analyse
+│   │   ├── service.py              ← appel Stockfish, python-chess
+│   │   ├── page.py                 ← intégration composant échiquier JS
+│   │   └── chessboard_component.py ← extension NiceGUI (le seul JS du projet)
+│   └── ml/                         ← Zone 4 : modèles ML
+│       ├── service.py              ← prédiction, clustering, reco, coach
+│       └── page.py
+├── core/                           ← partagé par toutes les features
+│   ├── pipeline_api_client.py      ← client HTTP vers la Pipeline API
+│   ├── config.py                   ← variables d'environnement
+│   └── stockfish.py                ← connexion Stockfish
+└── mlflow/                         ← tracking des modèles
 ```
+
+Le rôle des fichiers `service.py` (logique, données, ML) reste strictement séparé de `page.py` (affichage NiceGUI), pour garder une frontière claire à l'intérieur même d'un projet unifié — même sans frontière de langage, la séparation des responsabilités reste une bonne pratique.
 
 ---
 
-## 🔌 API REST — Contrat Frontend / Backend
+## 🔌 Flux de données — Pipeline API (externe, vers `chess-pulse`)
 
-Le frontend React ne sait pas comment fonctionne Python. Le backend Python ne sait pas comment fonctionne React. Ils communiquent uniquement via ces endpoints :
+Avec NiceGUI, il n'existe plus de frontière réseau *interne* entre interface et logique (tout tourne dans le même process Python). La seule API REST qui subsiste est **externe** : celle qui relie `chess-pulse-app` à `chess-pulse`, exactement comme prévu dans la décision d'architecture à deux projets.
 
-### Zone 1 — Pipeline
 ```
-POST /api/pipeline/sync
-  → Lance la synchronisation Chess.com
-  → Retourne : { nouvelles_parties: 15, total: 1027, statut: "success" }
-
-GET  /api/pipeline/status
-  → Statut de la dernière synchronisation
-  → Retourne : { derniere_sync: "2026-06-13", total_parties: 1012 }
+features/*/service.py  →  core/pipeline_api_client.py  →  HTTP  →  Pipeline API (chess-pulse)  →  PostgreSQL
 ```
 
-### Zone 2 — Dashboard
+Endpoints attendus côté Pipeline API (construite dans `chess-pulse`, consommée ici) :
+
 ```
-GET  /api/dashboard/stats
-  → KPIs globaux
-  → Retourne : { total_parties, victoires, defaites, nulles, winrate }
-
-GET  /api/dashboard/elo
-  → Évolution Elo par mois
-  → Retourne : [{ mois: "2025-09", elo_moyen: 727 }, ...]
-
-GET  /api/dashboard/ouvertures
-  → Winrate par ouverture
-  → Retourne : [{ ouverture, parties, winrate }, ...]
-
-GET  /api/dashboard/moments
-  → Winrate par moment de la journée
-  → Retourne : [{ moment, parties, winrate }, ...]
+GET  /games                  → liste des parties avec filtres
+GET  /games/{uuid}           → détail d'une partie (pgn, contexte)
+GET  /stats                  → KPIs globaux
+GET  /stats/elo              → évolution Elo par mois
+GET  /stats/ouvertures       → winrate par ouverture
+GET  /stats/moments          → winrate par moment de la journée
+POST /sync                   → déclenche une synchronisation Chess.com
 ```
 
-### Zone 3 — Échiquier
-```
-GET  /api/board/games
-  → Liste des parties avec filtres optionnels
-  → Params : ?resultat=defaite&format=rapid&limit=20
-  → Retourne : [{ uuid, date, adversaire, resultat, ouverture }, ...]
-
-GET  /api/board/game/{uuid}
-  → Détail complet d'une partie + analyse Stockfish
-  → Retourne : { pgn, coups, evaluations, blunders, accuracy }
-```
-
-### Zone 4 — ML
-```
-POST /api/ml/predict
-  → Prédit le résultat d'une partie
-  → Body : { ma_couleur, adversaire_rating, moment_journee, ouverture }
-  → Retourne : { prediction, probabilites, features_importantes }
-
-POST /api/ml/coach
-  → Analyse LLM d'une partie
-  → Body : { uuid }
-  → Retourne : { analyse_texte, erreurs_principales, conseils }
-
-GET  /api/ml/recommandations
-  → Ouvertures recommandées selon le profil
-  → Retourne : [{ ouverture, score_compatibilite, raison }, ...]
-
-GET  /api/ml/clusters
-  → Profil des défaites récentes
-  → Retourne : { cluster_principal, description, parties_similaires }
-```
+Chaque `service.py` de `chess-pulse-app` appelle ces endpoints via `core/pipeline_api_client.py` ; aucune feature ne se connecte directement à PostgreSQL.
 
 ---
 
-## ⚡ Temps réel — WebSocket
+## ⚡ Temps réel — natif à NiceGUI
 
-Pour la progression de la synchronisation et l'analyse Stockfish (opérations longues), on utilise WebSocket :
+NiceGUI maintient une connexion WebSocket par session de façon native (pas de configuration manuelle comme avec une API REST classique). Pour les opérations longues (sync Chess.com, analyse Stockfish), on met à jour les composants d'interface directement depuis le code Python pendant l'exécution :
 
+```python
+# features/pipeline/page.py
+progress = ui.linear_progress(value=0)
+label = ui.label("En attente...")
+
+async def lancer_sync():
+    async for etat in pipeline_service.sync_avec_progression():
+        progress.value = etat.pourcentage
+        label.text = etat.message
 ```
-WS /ws/pipeline/sync    ← progression en temps réel
-  → { etape: "ingestion", progression: 45, message: "450/1012 parties" }
 
-WS /ws/board/analyze    ← analyse Stockfish coup par coup
-  → { coup: 15, evaluation: 0.8, meilleur_coup: "Nf3" }
-```
+Pas de protocole à définir manuellement (pas de `WS /ws/...`) — NiceGUI pousse les mises à jour au navigateur dès que les variables Python liées à l'interface changent.
 
 ---
 
@@ -185,28 +149,28 @@ WS /ws/board/analyze    ← analyse Stockfish coup par coup
 Ajouter une **Zone 5** (ex: Agenda d'entraînement) :
 
 ```
-1. Créer backend/features/training/router.py
-2. Créer backend/features/training/service.py
-3. Enregistrer le router dans main.py
-4. Créer frontend/src/features/training/ (Claude Code)
+1. Créer features/training/service.py (logique)
+2. Créer features/training/page.py (interface NiceGUI)
+3. Enregistrer la page dans main.py
 ```
 
-**Aucun fichier existant n'est modifié.** Le module s'intègre naturellement.
+**Aucun fichier existant n'est modifié.** Le module s'intègre naturellement — et plus besoin de coordonner deux bases de code (backend + frontend) pour une seule nouvelle fonctionnalité.
 
 ---
 
 ## 🚀 Ordre de développement recommandé
 
 ```
-Phase 1 (déjà fait)  → Pipeline de données + PostgreSQL + dbt + Airflow
+Phase 1 (déjà fait)  → Pipeline de données + PostgreSQL + dbt + Airflow (chess-pulse)
 Phase 2 (en cours)   → Modèles ML (classification, clustering, recommandation, LLM)
-Phase 3 (à venir)    → Backend FastAPI (une feature à la fois)
-Phase 4 (à venir)    → Frontend React + Electron (Claude Code)
-Phase 5 (à venir)    → Intégration complète + tests + packaging
+                        + Pipeline API (FastAPI, dans chess-pulse)
+                        + ChessPulse Dash (NiceGUI, exploration des données, dans chess-pulse-app)
+Phase 3 (à venir)    → Zones Board (échiquier) et ML intégrées dans chess-pulse-app
+Phase 4 (à venir)    → Packaging desktop (NiceGUI natif) + tests + polish
 ```
 
 ---
 
 ## 💼 Ce que ça raconte à un recruteur
 
-*"J'ai conçu une application desktop full-stack avec une architecture feature-based évolutive — backend FastAPI Python exposant une API REST, frontend React packagé avec Electron, communication temps réel via WebSocket pour les opérations longues. Chaque fonctionnalité est isolée dans son propre module, ce qui permet d'ajouter de nouvelles features sans modifier l'existant."*
+*"J'ai conçu une application desktop avec une architecture feature-based évolutive, entièrement en Python (NiceGUI sur FastAPI) — exploration de données, échiquier interactif et modèles ML dans une seule interface réactive par WebSocket. J'ai consciemment évalué et écarté React/Electron : sur ce projet, une stack unifiée en Python servait mieux l'objectif d'apprentissage MLOps que de déléguer le frontend à un outil externe. La donnée reste découplée via une Pipeline API consommée en HTTP, jamais d'accès direct à la base depuis l'app."*

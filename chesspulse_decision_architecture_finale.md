@@ -37,17 +37,20 @@ Un 3e repo gère uniquement Docker Compose, les deux projets applicatifs s'y con
 chess-pulse (migré vers WSL2 + Docker Engine)
   ├── PostgreSQL (raw, staging, mart)
   ├── Airflow (orchestration pipeline)
-  ├── Metabase (dashboard démo portfolio)
   ├── Great Expectations (qualité)
   └── Pipeline API (FastAPI) ← NOUVEAU
         Expose : /games, /stats, /elo, /ouvertures...
                 ↓ HTTP
 chess-pulse-app (même environnement WSL2)
-  ├── Backend FastAPI (ML, Stockfish, Coach LLM)
-  │     → Appelle la Pipeline API pour lire les données
-  ├── Frontend React (4 zones : pipeline, dashboard, échiquier, ML)
-  └── Electron (packaging desktop)
+  └── NiceGUI (sur FastAPI) ← interface unique, tout en Python
+        → Appelle la Pipeline API pour lire les données
+        → Exploration de données (Zone Dashboard)
+        → Échiquier interactif + coach (Zone Board, composant JS intégré)
+        → Modèles ML (Zone ML)
+        → Packaging desktop natif (remplace Electron)
 ```
+
+Metabase est retiré du projet (déjà couvert par un autre projet de l'auteur, sans valeur portfolio additionnelle ici).
 
 ---
 
@@ -91,7 +94,7 @@ chess-pulse-app (même environnement WSL2)
 3. Cloner chess-pulse (clone frais, pas un déplacement) dans WSL2
 4. Configurer le .env dans cette nouvelle copie
 5. Relancer docker-compose et vérifier que tout fonctionne identique
-   (Airflow, dbt, Great Expectations, Metabase, dashboard)
+   (Airflow, dbt, Great Expectations)
 6. Construire la Pipeline API (nouveau service FastAPI léger dans chess-pulse)
 7. Documenter la migration dans le README (section Infrastructure)
 8. Commit dédié : "infra: migrate from Docker Desktop to Docker Engine on WSL2"
@@ -112,6 +115,29 @@ Décision annexe prise pendant la réflexion : aucun backup PostgreSQL n'est né
 
 ---
 
-## 💬 Pitch portfolio condensé
+## 🎯 Interface de `chess-pulse-app` : historique de la réflexion et décision finale
 
-*"J'ai structuré le projet en deux composants distincts communiquant via une API REST plutôt qu'un partage direct de base de données — un pattern d'architecture orientée services qui isole les responsabilités : le pipeline de données reste propriétaire de ses données, l'application ML/desktop les consomme via une interface stable. J'ai aussi migré l'infrastructure de Docker Desktop vers Docker Engine sur WSL2 pour réduire l'empreinte mémoire en développement local et fiabiliser le démarrage automatique."*
+Cette section trace le cheminement réel de la décision — utile pour comprendre pourquoi on n'est pas parti directement sur la solution retenue.
+
+**Point de départ.** L'app devait combiner exploration de données (comprendre le jeu) et échiquier interactif (s'exercer, coach). Une distinction entre "explorer" et "s'exercer" a été formulée, ce qui a fait envisager deux outils différents (Streamlit pour l'un, React pour l'autre), puis temporairement trois projets séparés (`chess-pulse-dash` + `chess-pulse-app`).
+
+**Correction de trajectoire.** Cette séparation en deux ou trois surfaces contredisait un critère plus important, exprimé explicitement : une seule interface, simple, pour gérer les deux usages. Le choix de deux technos différentes (Python pour l'un, JS pour l'autre) était la vraie cause du tiraillement, pas une nécessité produit.
+
+**Recherche et décision.** Évaluation des frameworks Python capables de couvrir exploration de données ET interface réactive (échiquier fluide) dans une seule techno : Streamlit (écarté — réexécute tout le script à chaque interaction, inadapté à un échiquier fluide), Dash, Reflex, **NiceGUI (retenu)**.
+
+**Décision finale : NiceGUI, une seule interface, tout en Python.**
+- Construit sur FastAPI/Starlette/Uvicorn — cohérent avec la Pipeline API déjà en FastAPI
+- Rendu réactif par WebSocket natif, pas de réexécution de script (contrairement à Streamlit) — adapté à un échiquier fluide
+- Composants natifs pour les graphiques d'exploration (`ui.plotly`, intégration Pandas/Matplotlib)
+- Mode desktop natif disponible — remplace le rôle d'Electron, sans dépendre de React/JS pour l'essentiel de l'app
+- Seul point de sortie du pur Python, assumé : l'échiquier interactif nécessite l'intégration d'une librairie JS dédiée (ex. chessboard.js) via le mécanisme d'extension de NiceGUI
+
+**Pourquoi pas React (finalement).** React avait été choisi initialement comme "le meilleur sur le papier" pour une app desktop, indépendamment d'un attachement à apprendre cette techno précise. Une fois établi que NiceGUI couvre les deux besoins (exploration + échiquier fluide) en restant en Python — la techno que l'auteur veut réellement approfondir pour son objectif MLOps/Data Engineer — React n'apportait plus d'avantage décisif, seulement une complexité supplémentaire (deux langages, contrat API interne, dépendance forte à Claude Code pour tout le front).
+
+**Metabase.** Retiré du projet — déjà utilisé sur un autre projet de l'auteur, donc sans valeur portfolio additionnelle ici.
+
+---
+
+## 💬 Pitch portfolio condensé (mis à jour)
+
+*"J'ai structuré le projet en deux composants distincts communiquant via une API REST plutôt qu'un partage direct de base de données — un pattern d'architecture orientée services. Pour l'interface de l'app, j'ai évalué plusieurs frameworks Python (Streamlit, Dash, NiceGUI) avant de retenir NiceGUI : il couvre à la fois l'exploration de données et un échiquier interactif fluide dans une seule interface réactive par WebSocket, en restant intégralement en Python — cohérent avec mon objectif MLOps/Data Engineer. Le tout sur une infrastructure Docker Engine/WSL2 légère, migrée depuis Docker Desktop pour réduire l'empreinte mémoire."*
