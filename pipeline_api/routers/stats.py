@@ -8,6 +8,10 @@ router = APIRouter()
 def get_stats_globales():
     """
     KPIs globaux : total parties, victoires, défaites, nulles.
+
+    Lit stg_games et non raw.games : c'est stg_games qui porte le périmètre
+    d'analyse (format rapid, parties non exclues). Interroger raw.games
+    directement exposerait les parties écartées.
     """
     conn = get_connexion()
     cursor = conn.cursor()
@@ -18,7 +22,7 @@ def get_stats_globales():
                 SUM(CASE WHEN mon_resultat = 'victoire' THEN 1 ELSE 0 END) AS victoires,
                 SUM(CASE WHEN mon_resultat = 'defaite'  THEN 1 ELSE 0 END) AS defaites,
                 SUM(CASE WHEN mon_resultat = 'nulle'    THEN 1 ELSE 0 END) AS nulles
-            FROM raw.games
+            FROM public_staging.stg_games
         """)
         row = cursor.fetchone()
         return {
@@ -37,27 +41,36 @@ def get_stats_globales():
 @router.get("/elo")
 def get_elo_mensuel():
     """
-    Évolution de l'Elo par mois.
+    Évolution de l'Elo par mois, ventilée par compte.
+
+    Le classement Chess.com est propre à un compte : deux comptes ne
+    démarrent pas au même Elo, donc leurs niveaux absolus ne se comparent
+    pas. `progression_depuis_debut_compte` est la seule mesure qui, elle,
+    reste comparable d'un compte à l'autre.
     """
     conn = get_connexion()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT mois, elo_moyen, elo_debut_mois, elo_fin_mois,
-                   elo_min, elo_max, total_parties
+            SELECT compte, mois, elo_moyen, elo_debut_mois, elo_fin_mois,
+                   elo_min, elo_max, total_parties,
+                   progression_mois, progression_depuis_debut_compte
             FROM public_mart.mart_elo_mensuel
-            ORDER BY mois ASC
+            ORDER BY compte ASC, mois ASC
         """)
         rows = cursor.fetchall()
         return [
             {
-                "mois":           row[0],
-                "elo_moyen":      float(row[1]),
-                "elo_debut_mois": row[2],
-                "elo_fin_mois":   row[3],
-                "elo_min":        row[4],
-                "elo_max":        row[5],
-                "total_parties":  row[6]
+                "compte":         row[0],
+                "mois":           row[1],
+                "elo_moyen":      float(row[2]),
+                "elo_debut_mois": row[3],
+                "elo_fin_mois":   row[4],
+                "elo_min":        row[5],
+                "elo_max":        row[6],
+                "total_parties":  row[7],
+                "progression_mois":                 row[8],
+                "progression_depuis_debut_compte":  row[9]
             }
             for row in rows
         ]
