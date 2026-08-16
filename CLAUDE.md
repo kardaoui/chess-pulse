@@ -23,7 +23,7 @@ docker compose logs -f airflow-scheduler
 
 Services : Airflow `localhost:8080`, Pipeline API `localhost:8000`, PostgreSQL `localhost:5432`.
 
-Les identifiants Airflow sont lus dans `.env` (`AIRFLOW_ADMIN_USER`, `AIRFLOW_ADMIN_PASSWORD`), non versionné. Le couple `admin/admin` mentionné ici auparavant a été révoqué.
+Les identifiants Airflow sont lus dans `.env` (`AIRFLOW_ADMIN_USER`, `AIRFLOW_ADMIN_PASSWORD`), non versionné. Le couple par défaut documenté ici auparavant a été révoqué.
 
 Metabase a été retiré du `docker-compose.yml`, mais un conteneur `chesspulse_metabase` orphelin peut encore tourner (`docker rm -f chesspulse_metabase` pour l'éliminer).
 
